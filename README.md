@@ -19,7 +19,7 @@ commit SHA in `uv.lock` — the consumer never moves until you bump its tag and
 
 | Extra | Enables | Pulls in |
 |-------|---------|----------|
-| (base) | `display_tools`, `date_tools`, `config_utils`, `host_tools`, `math_tools`, `number_tools`, `pandas_tools`, `doc_tools`, `android_tools` | pandas, python-dotenv, pytz, tabulate |
+| (base) | `display_tools`, `date_tools`, `config_utils`, `host_tools`, `math_tools`, `number_tools`, `pandas_tools`, `doc_tools`, `android_tools`, `json_tools` | pandas, python-dotenv, pytz, tabulate |
 | `google` | `google_tools`, `google_drive_tools`, `google_doc_tools`, `gmail_tools`, `date_tools.build_date_csvs_from_sheets` | pygsheets, google api/auth clients, dateutil, pyyaml |
 | `postgres` | `postgres_tools` | psycopg2-binary |
 | `s3` | `s3_tools` | boto3 |
