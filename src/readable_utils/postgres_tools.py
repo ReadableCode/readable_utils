@@ -7,7 +7,7 @@ import sys
 
 import pandas as pd
 import psycopg2
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from psycopg2 import pool, sql
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
@@ -20,19 +20,20 @@ from readable_utils.display_tools import pprint_df
 # %%
 # Variables #
 
-project_root = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+# Walk up from the cwd to find the consumer repo's .env (the old
+# __file__-relative path pointed inside site-packages once installed).
+load_dotenv(find_dotenv(usecwd=True))
 
-dotenv_path = os.path.join(project_root, ".env")
-print(dotenv_path)
-if os.path.exists(dotenv_path):
-    load_dotenv(dotenv_path)
 
-POSTGRES_URL = os.getenv("POSTGRES_URL")
-POSTGRES_USER = os.getenv("POSTGRES_USER")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT")
+def _pg_conn_kwargs():
+    """Postgres connection settings, read at call time so late env loading
+    (or a consumer's own load_dotenv) is always honored."""
+    return {
+        "host": os.environ["POSTGRES_URL"],
+        "port": os.getenv("POSTGRES_PORT"),
+        "user": os.environ["POSTGRES_USER"],
+        "password": os.environ["POSTGRES_PASSWORD"],
+    }
 
 
 # %%
@@ -44,11 +45,8 @@ def get_pool(postgres_db):
     postgres_pool = pool.SimpleConnectionPool(
         minconn=1,
         maxconn=20,  # Limit connections to avoid resource waste
-        host=POSTGRES_URL,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
+        **_pg_conn_kwargs(),
         dbname=postgres_db,
-        port=POSTGRES_PORT,
     )
 
     return postgres_pool
@@ -70,10 +68,7 @@ def release_connection(postgres_pool, conn):
 
 def ensure_database_exists(dbname):
     conn = psycopg2.connect(
-        host=POSTGRES_URL,
-        port=POSTGRES_PORT,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
+        **_pg_conn_kwargs(),
         dbname="postgres",  # connect to a guaranteed database
     )
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
@@ -91,10 +86,7 @@ def ensure_database_exists(dbname):
 
 def list_all_databases():
     conn = psycopg2.connect(
-        host=POSTGRES_URL,
-        port=POSTGRES_PORT,
-        user=POSTGRES_USER,
-        password=POSTGRES_PASSWORD,
+        **_pg_conn_kwargs(),
         dbname="postgres",  # connect to the default database
     )
     try:
