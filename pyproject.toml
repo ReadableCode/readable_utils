@@ -1,6 +1,6 @@
 [project]
 name = "readable-utils"
-version = "0.1.1"
+version = "0.1.2"
 description = "Shared personal utility belt: display/logging, date tables, Google Workspace, Postgres, S3, ntfy, pandas helpers"
 readme = "README.md"
 requires-python = ">=3.10"

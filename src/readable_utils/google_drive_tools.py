@@ -49,67 +49,60 @@ json_file_path = os.path.join(
     grandparent_dir,
     "service_account_credentials.json",
 )
-service_account_env_data = os.getenv(SERVICE_ACCOUNT_ENV_KEY)
-service_account_env_data_json = None
+
+# Credentials load lazily on first use -- importing this module never raises
+# on a machine without Google credentials.
 service_account_email = None
+_drive_service = None
 
-if service_account_env_data is not None:
-    print_logger(
-        f"Found environment variable for service account with key: {SERVICE_ACCOUNT_ENV_KEY}"
-    )
 
-    try:
-        if service_account_env_data:
-            service_account_env_data_json = json.loads(service_account_env_data)
-        else:
-            raise ValueError(
-                f"Environment variable {SERVICE_ACCOUNT_ENV_KEY} is not set or empty"
-            )
-    except json.JSONDecodeError as e:
+def _load_service_account_json():
+    global service_account_email
+    service_account_env_data = os.getenv(SERVICE_ACCOUNT_ENV_KEY)
+
+    if service_account_env_data is not None:
         print_logger(
-            f"JSONDecodeError: {e} with reading json from environment variable, trying to repair and reload"
+            f"Found environment variable for service account with key: {SERVICE_ACCOUNT_ENV_KEY}"
         )
-        if service_account_env_data is not None:
+        try:
+            service_account_env_data_json = json.loads(service_account_env_data)
+        except json.JSONDecodeError as e:
+            print_logger(
+                f"JSONDecodeError: {e} with reading json from environment variable, trying to repair and reload"
+            )
             service_account_env_data = service_account_env_data.replace("\n", "\\n")
             service_account_env_data_json = json.loads(service_account_env_data)
-        else:
-            raise ValueError(
-                f"Environment variable {SERVICE_ACCOUNT_ENV_KEY} is not set or empty"
-            )
-
-        # fix environment variable without modifying the .env file
+            # fix environment variable without modifying the .env file
+            os.environ[SERVICE_ACCOUNT_ENV_KEY] = service_account_env_data
+    elif os.path.exists(json_file_path):
+        print_logger(
+            f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, Found json credentails at: {json_file_path}"
+        )
+        service_account_env_data = open(json_file_path).read()
+        service_account_env_data_json = json.loads(service_account_env_data)
+        # add environment variable without modifying the .env file
         os.environ[SERVICE_ACCOUNT_ENV_KEY] = service_account_env_data
+    else:
+        raise ValueError(
+            f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, and no json credentails at: {json_file_path}"
+        )
 
-elif os.path.exists(json_file_path):
-    print_logger(
-        f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, Found json credentails at: {json_file_path}"
-    )
-    service_account_env_data = open(json_file_path).read()
-    service_account_env_data_json = json.loads(service_account_env_data)
+    service_account_email = service_account_env_data_json["client_email"]
+    print_logger(f"google_service_account email: {service_account_email}")
+    return service_account_env_data_json
 
-    # add environment variable without modifying the .env file
-    os.environ[SERVICE_ACCOUNT_ENV_KEY] = service_account_env_data
 
-else:
-    raise ValueError(
-        f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, and no json credentails at: {json_file_path}"
-    )
-
-service_account_email = service_account_env_data_json["client_email"]
-print_logger(f"google_service_account email: {service_account_email}")
-
-# create credentials from google service account info
-google_service_account_credentials = (
-    service_account.Credentials.from_service_account_info(
-        service_account_env_data_json,
-        scopes=["https://www.googleapis.com/auth/drive"],
-    )
-)
-
-# Create a Google Drive API client
-drive_service = build("drive", "v3", credentials=google_service_account_credentials)
-# increase timeout
-drive_service._http.timeout = 600
+def get_drive_service():
+    """The Google Drive API client, authorized on first call and cached."""
+    global _drive_service
+    if _drive_service is None:
+        credentials = service_account.Credentials.from_service_account_info(
+            _load_service_account_json(),
+            scopes=["https://www.googleapis.com/auth/drive"],
+        )
+        _drive_service = build("drive", "v3", credentials=credentials)
+        _drive_service._http.timeout = 600
+    return _drive_service
 
 
 # %%
@@ -160,7 +153,7 @@ def get_drive_file_id_from_folder_id_path(folder_id, ls_file_path, is_folder=Fal
             )
 
             results = (
-                drive_service.files().list(q=query, fields="files(id, name)").execute()
+                get_drive_service().files().list(q=query, fields="files(id, name)").execute()
             )
 
             # Iterate through the files on the current page
@@ -192,7 +185,7 @@ def get_drive_file_id_from_folder_id_path(folder_id, ls_file_path, is_folder=Fal
             "and mimeType!='application/vnd.google-apps.folder'"
         )
     results = (
-        drive_service.files()
+        get_drive_service().files()
         .list(q=query, fields="files(id, name)")
         .execute()
         .get("files", [])
@@ -223,7 +216,7 @@ def get_file_list_from_folder_id(folder_id):
     while True:
         # Retrieve a list of files in the specified folder
         results = (
-            drive_service.files()
+            get_drive_service().files()
             .list(
                 q=f"'{folder_id}' in parents and trashed=false",
                 fields="nextPageToken, files(id, name)",
@@ -290,7 +283,7 @@ def download_file_by_id(id, path, max_retries=3):
     while retries < max_retries:
         try:
             # download the file
-            request = drive_service.files().get_media(fileId=id)
+            request = get_drive_service().files().get_media(fileId=id)
             fh = io.BytesIO()
             downloader = MediaIoBaseDownload(fh, request)
             done = False
@@ -394,7 +387,7 @@ def get_drive_file_link(file_id):
 
 
 def rename_file(file_id, new_name):
-    drive_service.files().update(fileId=file_id, body={"name": new_name}).execute()
+    get_drive_service().files().update(fileId=file_id, body={"name": new_name}).execute()
 
 
 # %%
@@ -414,7 +407,7 @@ def get_file_name(file_id):
     """
 
     # Retrieve file metadata including the name
-    file_metadata = drive_service.files().get(fileId=file_id, fields="name").execute()
+    file_metadata = get_drive_service().files().get(fileId=file_id, fields="name").execute()
 
     file_name = file_metadata.get("name", "Unknown")
     print(f"File/Folder Name: {file_name}")
@@ -435,7 +428,7 @@ def get_parents_of_item(file_id):
 
     # Retrieve the file metadata
     file_metadata = (
-        drive_service.files().get(fileId=file_id, fields="parents").execute()
+        get_drive_service().files().get(fileId=file_id, fields="parents").execute()
     )
 
     # Get the parent folder IDs
@@ -457,7 +450,7 @@ def check_file_capabilities(file_id):
     """
 
     file_metadata = (
-        drive_service.files()
+        get_drive_service().files()
         .get(
             fileId=file_id,
             fields="capabilities, viewersCanCopyContent, copyRequiresWriterPermission",
@@ -482,7 +475,7 @@ def get_file_owner_info(file_id):
 
     # Use the files().get() method to retrieve the owner information
     file_metadata = (
-        drive_service.files()
+        get_drive_service().files()
         .get(fileId=file_id, fields="owners")  # This limits the response to owner info
         .execute()
     )
@@ -511,7 +504,7 @@ def list_permissions(file_id):
     Returns:
         list: A list of permission objects.
     """
-    permissions = drive_service.permissions().list(fileId=file_id).execute()
+    permissions = get_drive_service().permissions().list(fileId=file_id).execute()
     file_permissions = permissions.get("permissions", [])
 
     pprint_dict(file_permissions)
@@ -541,7 +534,7 @@ def share_folder_with_email(folder_id, email_address, role="reader"):
 
     # Add the new permission without altering existing permissions
     return (
-        drive_service.permissions()
+        get_drive_service().permissions()
         .create(
             fileId=folder_id,  # Treat folder like a file in Google Drive
             body=permission,
@@ -575,7 +568,7 @@ def create_folder_in_drive(drive_service, parent_id, folder_name):
         "parents": [parent_id],
         "mimeType": "application/vnd.google-apps.folder",
     }
-    folder = drive_service.files().create(body=folder_metadata, fields="id").execute()
+    folder = get_drive_service().files().create(body=folder_metadata, fields="id").execute()
     parent_id = folder["id"]
     return parent_id
 
@@ -612,7 +605,7 @@ def upload_file_to_drive(initial_folder_id, file_path, ls_folder_path=[]):
         while True:
             # Retrieve a list of files in the specified folder
             results = (
-                drive_service.files()
+                get_drive_service().files()
                 .list(
                     q=f"'{parent_id}' in parents and trashed=false",
                     fields="nextPageToken, files(id, name)",
@@ -634,7 +627,7 @@ def upload_file_to_drive(initial_folder_id, file_path, ls_folder_path=[]):
             print_logger(
                 f"Folder doesn't exist, creating folder: {folder_name}", level="info"
             )
-            parent_id = create_folder_in_drive(drive_service, parent_id, folder_name)
+            parent_id = create_folder_in_drive(get_drive_service(), parent_id, folder_name)
             print_logger(f"Folder: {folder_name} created with ID: {parent_id}")
         else:
             print_logger(
@@ -645,7 +638,7 @@ def upload_file_to_drive(initial_folder_id, file_path, ls_folder_path=[]):
     # Check if a file with the same name exists in the folder
     file_name = os.path.basename(file_path)
     existing_files = (
-        drive_service.files()
+        get_drive_service().files()
         .list(
             q=f"'{parent_id}' in parents and name='{file_name}' and trashed=false",
             fields="files(id)",
@@ -657,7 +650,7 @@ def upload_file_to_drive(initial_folder_id, file_path, ls_folder_path=[]):
         # replace contents of existing file
         existing_file_id = existing_files["files"][0]["id"]
         media = MediaFileUpload(file_path, mimetype="application/octet-stream")
-        drive_service.files().update(
+        get_drive_service().files().update(
             fileId=existing_file_id, media_body=media, fields="id"
         ).execute(num_retries=10)
         print_logger(f"Replaced existing file with ID: {existing_file_id}")
@@ -668,7 +661,7 @@ def upload_file_to_drive(initial_folder_id, file_path, ls_folder_path=[]):
         file_metadata = {"name": file_name, "parents": [parent_id]}
         media = MediaFileUpload(file_path, mimetype="application/octet-stream")
         uploaded_file = (
-            drive_service.files()
+            get_drive_service().files()
             .create(body=file_metadata, media_body=media, fields="id")
             .execute()
         )
@@ -727,6 +720,7 @@ def upload_report_csv(df, ls_folder_file_path):
         file_path = os.path.join(folder_path, ls_folder_file_path[-1])
         drive_file_path = ls_folder_file_path[:-1]
     else:
+        os.makedirs(temp_upload_dir, exist_ok=True)
         file_path = os.path.join(temp_upload_dir, *ls_folder_file_path)
         drive_file_path = []
 
@@ -789,6 +783,7 @@ def upload_report_html(df, ls_folder_file_path):
         file_path = os.path.join(folder_path, ls_folder_file_path[-1])
         drive_file_path = ls_folder_file_path[:-1]
     else:
+        os.makedirs(temp_upload_dir, exist_ok=True)
         file_path = os.path.join(temp_upload_dir, *ls_folder_file_path)
         drive_file_path = []
 
@@ -879,6 +874,7 @@ def upload_report_excel(ls_dfs, ls_tab_names, ls_folder_file_path):
         file_path = os.path.join(folder_path, ls_folder_file_path[-1])
         drive_file_path = ls_folder_file_path[:-1]
     else:
+        os.makedirs(temp_upload_dir, exist_ok=True)
         file_path = os.path.join(temp_upload_dir, *ls_folder_file_path)
         drive_file_path = []
 
@@ -912,7 +908,7 @@ def check_storage_space_service_account():
     check_storage_space_service_account()
     """
     # Get the about resource, which includes storage quota information
-    about = drive_service.about().get(fields="storageQuota").execute()
+    about = get_drive_service().about().get(fields="storageQuota").execute()
     print(f"Storage quota: {about['storageQuota']}")
     used_storage = int(about["storageQuota"]["usage"])
     total_storage = int(about["storageQuota"]["limit"])
@@ -941,7 +937,7 @@ def get_top_storage_use_files(num_files=20, parent_folder_id=None):
 
     # List files
     results = (
-        drive_service.files()
+        get_drive_service().files()
         .list(
             q=query,
             pageSize=num_files,
@@ -959,7 +955,7 @@ def get_top_storage_use_files(num_files=20, parent_folder_id=None):
         for item in items:
             # get parent folder id
             file_id = item["id"]
-            file = drive_service.files().get(fileId=file_id, fields="parents").execute()
+            file = get_drive_service().files().get(fileId=file_id, fields="parents").execute()
             parent_id = file.get("parents")[0] if "parents" in file else "No parent"
             file_size = item.get("size", 0)
             file_size_MB = int(file_size) / 1e6 if file_size else 0
@@ -989,7 +985,7 @@ def list_files_with_same_name_in_different_locations(file_name):
     query = f"name = '{file_name}' and trashed = false"
 
     results = (
-        drive_service.files()
+        get_drive_service().files()
         .list(q=query, fields="files(id, name, parents, size)", spaces="drive")
         .execute()
     )
@@ -1055,7 +1051,7 @@ def delete_file_by_id(file_id):
     """
 
     # Delete the file
-    drive_service.files().delete(fileId=file_id).execute()
+    get_drive_service().files().delete(fileId=file_id).execute()
     print(f"File with ID {file_id} deleted")
 
 

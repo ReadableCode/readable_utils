@@ -299,9 +299,21 @@ dict_month_numbers = {
 
 today = date.today()
 today_date = today.strftime("%Y-%m-%d")
-WorkingWeek = dict_dashed_pad_desc_date[today_date]
-WeekNum = WorkingWeek.split("-")[1].replace("W", "")
-Year = WorkingWeek.split("-")[0]
+# .get() so importing never raises once today is past the committed CSVs —
+# unattended jobs that don't use week logic must not die on import. Anything
+# that needs the week should call get_working_week() for a loud error.
+WorkingWeek = dict_dashed_pad_desc_date.get(today_date)
+WeekNum = WorkingWeek.split("-")[1].replace("W", "") if WorkingWeek else None
+Year = WorkingWeek.split("-")[0] if WorkingWeek else None
+
+
+def get_working_week():
+    if WorkingWeek is None:
+        raise ValueError(
+            f"df_days.csv has no row for today ({today_date}) — regenerate the "
+            "date CSVs (build_date_csvs_from_sheets) and cut a new release."
+        )
+    return WorkingWeek
 
 all_weeks_list = []
 starting_year = 2018

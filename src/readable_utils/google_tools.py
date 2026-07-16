@@ -40,59 +40,69 @@ json_file_path = os.path.join(
     grandparent_dir,
     "service_account_credentials.json",
 )
-service_account_env_data = os.getenv(SERVICE_ACCOUNT_ENV_KEY)
-service_account_env_data_json = None
+
+# Credentials load lazily on first use — importing this module never raises
+# on a machine without Google credentials.
 service_account_email = None
+_gc = None
 
-if service_account_env_data is not None:
-    print_logger(
-        f"Found environment variable for service account with key: {SERVICE_ACCOUNT_ENV_KEY}"
-    )
 
-    try:
-        if service_account_env_data:
-            service_account_env_data_json = json.loads(service_account_env_data)
-        else:
-            raise ValueError(
-                f"Environment variable {SERVICE_ACCOUNT_ENV_KEY} is not set or empty"
-            )
-    except json.JSONDecodeError as e:
+def _load_service_account():
+    """Resolve service account json from the env var or a credentials file."""
+    global service_account_email
+    service_account_env_data = os.getenv(SERVICE_ACCOUNT_ENV_KEY)
+    service_account_env_data_json = None
+
+    if service_account_env_data is not None:
         print_logger(
-            f"JSONDecodeError: {e} with reading json from environment variable, trying to repair and reload"
+            f"Found environment variable for service account with key: {SERVICE_ACCOUNT_ENV_KEY}"
         )
-        if service_account_env_data is not None:
+
+        try:
+            if service_account_env_data:
+                service_account_env_data_json = json.loads(service_account_env_data)
+            else:
+                raise ValueError(
+                    f"Environment variable {SERVICE_ACCOUNT_ENV_KEY} is not set or empty"
+                )
+        except json.JSONDecodeError as e:
+            print_logger(
+                f"JSONDecodeError: {e} with reading json from environment variable, trying to repair and reload"
+            )
             service_account_env_data = service_account_env_data.replace("\n", "\\n")
             service_account_env_data_json = json.loads(service_account_env_data)
-        else:
-            raise ValueError(
-                f"Environment variable {SERVICE_ACCOUNT_ENV_KEY} is not set or empty"
-            )
 
-        # fix environment variable without modifying the .env file
+            # fix environment variable without modifying the .env file
+            os.environ[SERVICE_ACCOUNT_ENV_KEY] = service_account_env_data
+
+    elif os.path.exists(json_file_path):
+        print_logger(
+            f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, Found json credentails at: {json_file_path}"
+        )
+        service_account_env_data = open(json_file_path).read()
+        service_account_env_data_json = json.loads(service_account_env_data)
+
+        # add environment variable without modifying the .env file
         os.environ[SERVICE_ACCOUNT_ENV_KEY] = service_account_env_data
 
-elif os.path.exists(json_file_path):
-    print_logger(
-        f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, Found json credentails at: {json_file_path}"
-    )
-    service_account_env_data = open(json_file_path).read()
-    service_account_env_data_json = json.loads(service_account_env_data)
+    else:
+        raise ValueError(
+            f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, and no json credentails at: {json_file_path}"
+        )
 
-    # add environment variable without modifying the .env file
-    os.environ[SERVICE_ACCOUNT_ENV_KEY] = service_account_env_data
+    service_account_email = service_account_env_data_json["client_email"]
+    print_logger(f"google_service_account email: {service_account_email}")
 
-else:
-    raise ValueError(
-        f"No environment varible with key: {SERVICE_ACCOUNT_ENV_KEY}, and no json credentails at: {json_file_path}"
-    )
 
-service_account_email = service_account_env_data_json["client_email"]
-print_logger(f"google_service_account email: {service_account_email}")
-
-# Create a connection to Google Sheets
-gc = pygsheets.authorize(
-    service_account_env_var=SERVICE_ACCOUNT_ENV_KEY,
-)
+def get_gc():
+    """The pygsheets client, authorized on first call and cached."""
+    global _gc
+    if _gc is None:
+        _load_service_account()
+        _gc = pygsheets.authorize(
+            service_account_env_var=SERVICE_ACCOUNT_ENV_KEY,
+        )
+    return _gc
 
 
 # %%
@@ -122,7 +132,7 @@ def get_book_from_id(id, retry=True):
         return Workbook
 
     try:
-        book_from_id = gc.open_by_key(id)
+        book_from_id = get_gc().open_by_key(id)
         dict_connected_books[id] = book_from_id
         print_logger(f"Opening new connection to {id}", level="debug")
         return book_from_id
@@ -264,7 +274,7 @@ def get_book(bookName, retry=True):
     else:
         try:
             print_logger(f"Opening new connection to {bookName}", level="debug")
-            Workbook = gc.open(bookName)
+            Workbook = get_gc().open(bookName)
 
             # print out what should add
             workbook_id_to_add_to_dict = Workbook.id
@@ -274,6 +284,7 @@ def get_book(bookName, retry=True):
                 level="warning",
             )
             # write to file what should add
+            os.makedirs(data_dir, exist_ok=True)
             with open(
                 os.path.join(data_dir, "dict_hardcoded_book_ids_to_add.txt"), "a"
             ) as f:
@@ -353,7 +364,7 @@ def get_book_with_create(bookName, parent_folder_id=None, template_id=None):
                 f"Book {bookName} not in hardcoded book ids, trying to open by name",
                 level="info",
             )
-            Workbook = gc.open(bookName)
+            Workbook = get_gc().open(bookName)
             print_logger(
                 f"Book {bookName} already exists, using existing connection",
                 level="info",
@@ -363,7 +374,7 @@ def get_book_with_create(bookName, parent_folder_id=None, template_id=None):
             pass
 
     print_logger(f"Creating book: {bookName}", level="info")
-    Workbook = gc.create(bookName, template=template_id, folder=parent_folder_id)
+    Workbook = get_gc().create(bookName, template=template_id, folder=parent_folder_id)
     if template_id is not None and email_address_for_testing is not None:
         Workbook.share(email_address_for_testing, role="writer")
     dict_connected_books[bookName] = Workbook
@@ -913,7 +924,7 @@ def write_df_to_range_of_sheet_obj(
 
 
 def copy_sheet_book_to_book(source_book, ls_source_sheets, ls_dest_books):
-    Workbook_src = gc.open(source_book)
+    Workbook_src = get_gc().open(source_book)
     src_book_id = Workbook_src.id
 
     for dest_book in ls_dest_books:
@@ -922,7 +933,7 @@ def copy_sheet_book_to_book(source_book, ls_source_sheets, ls_dest_books):
             src_sheet_id = sheet_src.id
             src_tup = (src_book_id, src_sheet_id)
 
-            Workbook_dest = gc.open(dest_book)
+            Workbook_dest = get_gc().open(dest_book)
 
             try:
                 Workbook_dest.del_worksheet(

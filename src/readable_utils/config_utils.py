@@ -62,9 +62,13 @@ directories = [
     s3_download_cache,
     temp_upload_dir,
 ]
-for directory in directories:
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+
+
+def ensure_dirs():
+    """Create the standard project directories. Called by modules at the point
+    they actually write — importing this package never touches the disk."""
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
 
 if __name__ == "__main__":
     print(f"home_dir: {home_dir}")

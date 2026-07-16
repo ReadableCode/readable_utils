@@ -30,39 +30,45 @@ if os.path.exists(dotenv_path):
 # Google Credentials #
 
 service_account_env_key = "GOOGLE_SERVICE_ACCOUNT"
-raw_json = os.getenv(service_account_env_key)
 
-try:
-    service_account_email = json.loads(raw_json)["client_email"]
-    fixed_json = raw_json
-except json.JSONDecodeError as e:
-    print_logger(f"Issues: {e} with reading json from environment variable")
-    print_logger("Fixing json from environment variable")
-    fixed_json = raw_json.replace("\n", "\\n")
-    service_account_email = json.loads(fixed_json)["client_email"]
-    # fix environment variable without modifying the .env file
-    os.environ[service_account_env_key] = fixed_json
-
-print_logger(f"google_service_account email: {service_account_email}")
+# Credentials load lazily on first use -- importing this module never raises
+# on a machine without Google credentials.
+service_account_email = None
+_docs_service = None
 
 
-if os.getenv(service_account_env_key):
-    print_logger("Using service account credentials from environment variable")
-    # create credentials from google service account info
-    credentials_docs = service_account.Credentials.from_service_account_info(
-        json.loads(os.getenv(service_account_env_key), strict=False),
-        scopes=["https://www.googleapis.com/auth/documents"],
-    )
-else:
-    print_logger("Using json file for service account credentials")
-    # create credentials from json file
-    credentials_docs = service_account.Credentials.from_service_account_file(
-        os.path.join(grandparent_dir, "service_account_credentials.json"),
-        scopes=["https://www.googleapis.com/auth/documents"],
-    )
+def get_docs_service():
+    """The Google Docs API client, authorized on first call and cached."""
+    global _docs_service, service_account_email
+    if _docs_service is not None:
+        return _docs_service
 
-# Create a Google Docs API client
-docs_service = build("docs", "v1", credentials=credentials_docs)
+    raw_json = os.getenv(service_account_env_key)
+    if raw_json:
+        try:
+            service_account_email = json.loads(raw_json)["client_email"]
+        except json.JSONDecodeError as e:
+            print_logger(f"Issues: {e} with reading json from environment variable")
+            print_logger("Fixing json from environment variable")
+            raw_json = raw_json.replace("\n", "\\n")
+            service_account_email = json.loads(raw_json)["client_email"]
+            # fix environment variable without modifying the .env file
+            os.environ[service_account_env_key] = raw_json
+        print_logger(f"google_service_account email: {service_account_email}")
+        print_logger("Using service account credentials from environment variable")
+        credentials_docs = service_account.Credentials.from_service_account_info(
+            json.loads(raw_json, strict=False),
+            scopes=["https://www.googleapis.com/auth/documents"],
+        )
+    else:
+        print_logger("Using json file for service account credentials")
+        credentials_docs = service_account.Credentials.from_service_account_file(
+            os.path.join(grandparent_dir, "service_account_credentials.json"),
+            scopes=["https://www.googleapis.com/auth/documents"],
+        )
+
+    _docs_service = build("docs", "v1", credentials=credentials_docs)
+    return _docs_service
 
 
 # %%
@@ -80,7 +86,7 @@ def get_google_doc_from_id(id):
     """
 
     try:
-        document = docs_service.documents().get(documentId=id).execute()
+        document = get_docs_service().documents().get(documentId=id).execute()
         return document
     except HttpError as e:
         print_logger(f"Error: {e}", level="warning")
@@ -112,7 +118,7 @@ def append_text_to_doc_by_id(id, text):
     """
 
     # Get the current length of the document
-    document = docs_service.documents().get(documentId=id).execute()
+    document = get_docs_service().documents().get(documentId=id).execute()
     current_length = document["body"]["content"][-1]["endIndex"] - 1
 
     requests = [
@@ -124,7 +130,7 @@ def append_text_to_doc_by_id(id, text):
         }
     ]
     result = (
-        docs_service.documents()
+        get_docs_service().documents()
         .batchUpdate(documentId=id, body={"requests": requests})
         .execute()
     )
