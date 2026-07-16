@@ -37,9 +37,12 @@ commit SHA in `uv.lock` — the consumer never moves until you bump its tag and
 
 Vendored copies derived the repo root from their own location
 (`<repo>/src/utils/` → grandparent). Installed in a venv that is meaningless,
-so `config_utils` now uses the **current working directory** as the project
-root (`base_dir`) — run scripts from the repo root, as before — or set
-`READABLE_UTILS_BASE_DIR` to override. The old names (`parent_dir`,
+so `config_utils` now finds the project root (`base_dir`) by **walking up
+from the current working directory** until it hits a repo-root marker
+(`pyproject.toml`, `uv.lock`, `.git`, or `.env`). Scripts, code cells, and
+notebooks therefore resolve the same root from anywhere inside the repo —
+including cells run from `src/`. Set `READABLE_UTILS_BASE_DIR` to override;
+if no marker is found the current working directory is used as-is. The old names (`parent_dir`,
 `grandparent_dir`, `data_dir`, `log_dir`, ...) still exist as aliases off
 `base_dir`, so vendored-era code keeps working. `file_dir` now points at the
 installed package (where `date_tools`' `df_*.csv` tables ship as package

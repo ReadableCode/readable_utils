@@ -15,10 +15,30 @@ file_dir = os.path.dirname(os.path.realpath(__file__))
 
 # The consumer project's root. When this code was vendored at
 # <repo>/src/utils/, "grandparent_dir" meant the repo root; installed as a
-# package that trick no longer works, so the root is the current working
-# directory (run your scripts from the repo root, as before) or an explicit
-# READABLE_UTILS_BASE_DIR override.
-base_dir = os.path.abspath(os.environ.get("READABLE_UTILS_BASE_DIR", os.getcwd()))
+# package that trick no longer works. Instead, walk up from the current
+# working directory until a repo-root marker is found — this makes code
+# cells / notebooks run from anywhere inside the repo (src/, tests/, ...)
+# resolve the same root as a script run from the repo root. An explicit
+# READABLE_UTILS_BASE_DIR always wins; if no marker is found, fall back to
+# the current working directory.
+_ROOT_MARKERS = ("pyproject.toml", "uv.lock", ".git", ".env")
+
+
+def find_base_dir(start_dir=None):
+    env_override = os.environ.get("READABLE_UTILS_BASE_DIR")
+    if env_override:
+        return os.path.abspath(env_override)
+    current = os.path.abspath(start_dir or os.getcwd())
+    while True:
+        if any(os.path.exists(os.path.join(current, m)) for m in _ROOT_MARKERS):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:  # filesystem root, no marker found
+            return os.path.abspath(start_dir or os.getcwd())
+        current = parent
+
+
+base_dir = find_base_dir()
 
 # Compatibility aliases: vendored callers imported these expecting repo root.
 parent_dir = base_dir
