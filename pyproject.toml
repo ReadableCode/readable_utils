@@ -1,0 +1,43 @@
+[project]
+name = "readable-utils"
+version = "0.1.0"
+description = "Shared personal utility belt: display/logging, date tables, Google Workspace, Postgres, S3, ntfy, pandas helpers"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "python-dotenv>=1.0",
+    "pytz>=2024.1",
+    "tabulate>=0.9",
+]
+
+[project.optional-dependencies]
+google = [
+    "pygsheets>=2.0.6",
+    "google-api-python-client>=2.0",
+    "google-auth>=2.0",
+    "google-auth-oauthlib>=1.0",
+    "python-dateutil>=2.8",
+    "pyyaml>=6.0",
+]
+postgres = ["psycopg2-binary>=2.9"]
+s3 = ["boto3>=1.34"]
+ntfy = ["requests>=2.31"]
+all = ["readable-utils[google,postgres,s3,ntfy]"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/readable_utils"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "flake8>=7.0.0",
+    "isort>=5.0.0",
+    "pytest>=8.0",
+]
