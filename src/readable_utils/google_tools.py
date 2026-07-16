@@ -19,7 +19,7 @@ from googleapiclient.errors import HttpError
 if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from readable_utils.config_utils import data_dir, file_dir, grandparent_dir
+from readable_utils.config_utils import base_dir, data_dir, file_dir, grandparent_dir
 from readable_utils.display_tools import pprint_df, pprint_ls, print_logger
 
 # %%
@@ -108,12 +108,18 @@ def get_gc():
 # %%
 # Sheet Variables #
 
-# load preconfigured sheet ids
-if os.path.exists(os.path.join(file_dir, "sheet_ids.yaml")):
-    with open(os.path.join(file_dir, "sheet_ids.yaml"), "r") as outfile:
-        dict_hardcoded_book_ids = yaml.load(outfile, Loader=yaml.FullLoader)
-else:
-    dict_hardcoded_book_ids = {}
+# load preconfigured sheet ids: package dir first, then the consumer repo
+# root (base_dir) so each repo can carry its own sheet_ids.yaml override
+dict_hardcoded_book_ids = {}
+for _sheet_ids_path in (
+    os.path.join(file_dir, "sheet_ids.yaml"),
+    os.path.join(base_dir, "sheet_ids.yaml"),
+):
+    if os.path.exists(_sheet_ids_path):
+        with open(_sheet_ids_path, "r") as outfile:
+            dict_hardcoded_book_ids.update(
+                yaml.load(outfile, Loader=yaml.FullLoader) or {}
+            )
 
 
 # %%
