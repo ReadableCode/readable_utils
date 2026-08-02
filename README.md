@@ -19,12 +19,34 @@ commit SHA in `uv.lock` — the consumer never moves until you bump its tag and
 
 | Extra | Enables | Pulls in |
 |-------|---------|----------|
-| (base) | `display_tools`, `date_tools`, `config_utils`, `host_tools`, `math_tools`, `number_tools`, `pandas_tools`, `doc_tools`, `android_tools`, `json_tools` | pandas, python-dotenv, pytz, tabulate |
+| (base) | `display_tools`, `date_tools`, `config_utils`, `host_tools`, `math_tools`, `number_tools`, `pandas_tools`, `doc_tools`, `android_tools`, `json_tools`, `inventory_tools`, `ssh_tools`, `host_stats_tools`, `design_tokens` | pandas, python-dotenv, pytz, tabulate |
 | `google` | `google_tools`, `google_drive_tools`, `google_doc_tools`, `gmail_tools` | pygsheets, google api/auth clients, dateutil, pyyaml |
 | `postgres` | `postgres_tools` | psycopg2-binary |
 | `s3` | `s3_tools` | boto3 |
 | `ntfy` | `ntfy_tools` | requests |
 | `all` | everything | all of the above |
+
+## Herd-infrastructure modules (v0.3.0)
+
+Four stdlib-only modules shared by the herdstone and status_board repos so
+inventory/SSH behavior can't drift between them:
+
+- `inventory_tools` — `*_credentials` sibling-repo discovery
+  (`find_credentials_dirs`, `credentials_context`, `overlay_context`,
+  `find_inventory_paths`) and hosts.json record resolution
+  (`load_inventory_hosts`, `find_host_record` — name/alias,
+  case-insensitive).
+- `ssh_tools` — one `build_ssh_argv` for every unattended connection:
+  BatchMode/accept-new base options, `-J` jump-hop injection (skipped when
+  this machine IS the jump host), `identity_file`/`port` support, and a
+  local-execution short-circuit that returns a plain shell argv when the
+  target is this machine.
+- `host_stats_tools` — the `@@STATS@@` disk/cpu/mem one-liner probe
+  (`HOST_STATS_COMMAND`, `split_host_stats`, `parse_host_stats`) and the
+  htop-style green→yellow→red meter rendering (`stats_renderable`; rich is
+  imported lazily, only by callers that render).
+- `design_tokens` — the "terminal navy" palette constants plus
+  `terminal_navy_textual_theme()` (textual imported lazily).
 
 ## Migrating a repo off its vendored copy
 
