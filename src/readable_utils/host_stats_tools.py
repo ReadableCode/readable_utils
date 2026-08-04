@@ -15,6 +15,14 @@ import colorsys
 # output and renders it locally as meter bars, so the meters look identical
 # everywhere they appear.
 #
+# Disk used is computed as total-minus-available, NOT df's own Used column.
+# On macOS / is the sealed read-only system volume, so its Used is just the OS
+# snapshot (~12G) while every byte you actually store lives on the Data volume
+# sharing the same APFS container - reading Used there reports a 5%-full disk
+# that is really 85% full. Subtracting Available from the container total is
+# right on both platforms; on Linux it additionally counts the root-reserved
+# blocks df hides from Used, which belong in a "space you can't use" meter.
+#
 # POSIX sh, and portable across Linux and macOS: df -Pk and getconf are the
 # same on both, while load and memory branch on whether the Linux source
 # exists. On macOS the fallbacks are sysctl vm.loadavg ("{ 1.2 3.4 5.6 }")
@@ -39,7 +47,7 @@ _MEM_SNIPPET = (
 )
 HOST_STATS_COMMAND = (
     f"printf '{STATS_MARKER} disk=%s load=%s cpu=%s mem=%s\\n' "
-    "\"$(df -Pk / | awk 'NR==2{print $3\"/\"$2}')\" "
+    "\"$(df -Pk / | awk 'NR==2{print $2-$4\"/\"$2}')\" "
     f"\"$({_LOAD_SNIPPET})\" "
     "\"$(getconf _NPROCESSORS_ONLN)\" "
     f"\"$({_MEM_SNIPPET})\""
