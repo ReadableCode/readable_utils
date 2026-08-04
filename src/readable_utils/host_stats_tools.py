@@ -8,19 +8,41 @@ import colorsys
 
 # One machine-readable line of host stats appended to (or standing in for) a
 # remote command. Reads only numbers the kernel already maintains - df for
-# the root filesystem, /proc/loadavg (the same 1/5/15-minute CPU averages
-# top's header shows, so a 5-minute refresh reads the 5-minute column with
-# nothing tracked on the host), and free for current memory (Linux keeps no
-# memory average, so that one is a point-in-time reading). Linux hosts only.
-# The caller strips this line off the output and renders it locally as meter
-# bars, so the meters look identical everywhere they appear.
+# the root filesystem, the 1/5/15-minute CPU load averages top's header shows
+# (so a 5-minute refresh reads the 5-minute column with nothing tracked on
+# the host), and current memory (neither kernel keeps a memory average, so
+# that one is a point-in-time reading). The caller strips this line off the
+# output and renders it locally as meter bars, so the meters look identical
+# everywhere they appear.
+#
+# POSIX sh, and portable across Linux and macOS: df -Pk and getconf are the
+# same on both, while load and memory branch on whether the Linux source
+# exists. On macOS the fallbacks are sysctl vm.loadavg ("{ 1.2 3.4 5.6 }")
+# and vm_stat, whose used-memory figure is the Activity Monitor definition -
+# active + wired + compressor-occupied pages, scaled by the page size vm_stat
+# names in its own header (16K on Apple silicon, 4K on Intel) - against
+# hw.memsize for the total. vm_stat prints page counts with a trailing period,
+# hence the gsub scrubbing before the arithmetic.
 STATS_MARKER = "@@STATS@@"
+_LOAD_SNIPPET = (
+    "if [ -r /proc/loadavg ]; then cut -d' ' -f1-3 /proc/loadavg | tr ' ' ','; "
+    "else sysctl -n vm.loadavg | awk '{print $2\",\"$3\",\"$4}'; fi"
+)
+_MEM_SNIPPET = (
+    "if command -v free >/dev/null 2>&1; then free -m | awk 'NR==2{print $3\"/\"$2}'; "
+    "else vm_stat | awk -v t=\"$(sysctl -n hw.memsize)\" "
+    "'/page size of/{gsub(/[^0-9]/,\"\",$8);ps=$8} "
+    "/Pages active/{gsub(/\\./,\"\",$3);a=$3} "
+    "/Pages wired down/{gsub(/\\./,\"\",$4);w=$4} "
+    "/occupied by compressor/{gsub(/\\./,\"\",$5);c=$5} "
+    "END{printf \"%d/%d\",(a+w+c)*ps/1048576,t/1048576}'; fi"
+)
 HOST_STATS_COMMAND = (
     f"printf '{STATS_MARKER} disk=%s load=%s cpu=%s mem=%s\\n' "
     "\"$(df -Pk / | awk 'NR==2{print $3\"/\"$2}')\" "
-    "\"$(cut -d' ' -f1-3 /proc/loadavg | tr ' ' ',')\" "
-    "\"$(nproc)\" "
-    "\"$(free -m | awk 'NR==2{print $3\"/\"$2}')\""
+    f"\"$({_LOAD_SNIPPET})\" "
+    "\"$(getconf _NPROCESSORS_ONLN)\" "
+    f"\"$({_MEM_SNIPPET})\""
 )
 
 METER_WIDTH = 22
