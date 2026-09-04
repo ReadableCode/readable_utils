@@ -32,7 +32,12 @@ from readable_utils.display_tools import print_logger
 # %%
 # Variables #
 
-# If modifying these scopes, delete the file token.json.
+# Scopes requested when a NEW consent is minted. An existing token file is
+# loaded with its own recorded scopes, not these: google-auth sends whatever
+# scopes it was constructed with on every refresh, and Google narrows the
+# access token to them, so passing this list for a token that was granted
+# more (e.g. gmail.settings.basic for filters) would silently drop the extra
+# grant. If modifying these scopes, delete the token file and re-consent.
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
@@ -57,7 +62,15 @@ def deploy_auth_files_from_env(account_type):
             f.write(os.environ[f"GMAIL_TOKEN_{account_type.upper()}"])
 
 
-def get_gmail_service(account_type="default"):
+def get_gmail_service(account_type="default", scopes=None):
+    """
+    Build a Gmail service for ``gmail_token_<account_type>.json``.
+
+    ``scopes`` defaults to the scopes recorded in the token file, so a token
+    granted more than ``SCOPES`` keeps its full grant across refreshes. It is
+    only used as the request list when no token exists and a browser consent
+    has to be run; pass it explicitly to mint a token with extra scopes.
+    """
     oauth_path = os.path.join(grandparent_dir, f"gmail_oauth_{account_type}.json")
     token_path = os.path.join(grandparent_dir, f"gmail_token_{account_type}.json")
 
@@ -79,9 +92,11 @@ def get_gmail_service(account_type="default"):
     # automatically when the authorization flow completes for the first time.
     if os.path.exists(token_path):
         print_logger(f"Using:\ntoken file: {token_path}\noauth file: {oauth_path}")
+        # scopes=None makes google-auth use the token file's own "scopes"
+        # entry, so refreshes do not narrow a wider grant to SCOPES.
         creds = Credentials.from_authorized_user_file(
             token_path,
-            SCOPES,
+            scopes,
         )
 
     # If there are no (valid) credentials available, let the user log in.
@@ -91,7 +106,7 @@ def get_gmail_service(account_type="default"):
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 oauth_path,
-                SCOPES,
+                scopes or SCOPES,
             )
             creds = flow.run_local_server(port=0)
 
