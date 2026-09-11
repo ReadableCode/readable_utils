@@ -1,6 +1,6 @@
 # %%
-# The readablecode "terminal navy" design system (dotfiles design/STYLE.md,
-# tokens in design/tokens.css) as Python constants, so every TUI/web surface
+# The readablecode "terminal navy" design system (ReadableCode/style-terminal-navy:
+# STYLE.md, tokens in tokens.css) as Python constants, so every TUI/web surface
 # pulls the same palette from one place instead of carrying drifting copies.
 
 # %%
