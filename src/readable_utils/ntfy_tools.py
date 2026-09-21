@@ -56,9 +56,9 @@ def check_for_notifications(topic):
 def send_notification(topic, message):
     """Send a notification using Ntfy with username and password."""
     topic_url = f"{NTFY_URL}/{topic}"
-    response = requests.post(
-        topic_url, auth=(NTFY_USERNAME, NTFY_PASSWORD), data={"message": message}
-    )
+    # ntfy takes the raw POST body as the message text: a form dict here would
+    # arrive as the literal "message=Power+event..." on every subscriber
+    response = requests.post(topic_url, auth=(NTFY_USERNAME, NTFY_PASSWORD), data=message.encode("utf-8"))
     return response.status_code == 200
 
 
