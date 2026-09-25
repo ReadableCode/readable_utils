@@ -41,7 +41,7 @@ inventory/SSH behavior can't drift between them:
   this machine IS the jump host), `identity_file`/`port` support, and a
   local-execution short-circuit that returns a plain shell argv when the
   target is this machine.
-- `host_stats_tools` — the `@@STATS@@` disk/cpu/mem one-liner probe
+- `host_stats_tools` — the `@@STATS@@` per-physical-drive disk/cpu/mem one-liner probe
   (`HOST_STATS_COMMAND`, `split_host_stats`, `parse_host_stats`) and the
   htop-style green→yellow→red meter rendering (`stats_renderable`; rich is
   imported lazily, only by callers that render).
