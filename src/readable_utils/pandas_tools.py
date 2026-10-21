@@ -232,47 +232,6 @@ def print_schema_yaml_datasets_format(dict_schema):
         print('  comment: ""')
 
 
-def print_schema_yaml_limesync_format(dict_schema, save_path=None):
-    """
-    Prints out a schema like this:
-    - name: "ch"
-      type: "string"
-      comment: ""
-    - name: "company_name"
-      type: "string"
-      comment: "company"
-    """
-    print("schema:")
-    for key, value in dict_schema.items():
-        if value["col_type"] == "float64":
-            type_to_print = "double"
-        elif value["col_type"] == "bool":
-            type_to_print = "boolean"
-        elif value["col_type"] == "int64":
-            type_to_print = "int"
-        elif value["col_type"] == "datetime64[ns]":
-            type_to_print = "timestamp"
-        else:
-            type_to_print = value["col_type"]
-        print(f"    {key}: {type_to_print}")
-
-    if save_path:
-        with open(save_path, "w") as f:
-            f.write("schema:\n")
-            for key, value in dict_schema.items():
-                if value["col_type"] == "float64":
-                    type_to_print = "double"
-                elif value["col_type"] == "bool":
-                    type_to_print = "boolean"
-                elif value["col_type"] == "int64":
-                    type_to_print = "int"
-                elif value["col_type"] == "datetime64[ns]":
-                    type_to_print = "timestamp"
-                else:
-                    type_to_print = value["col_type"]
-                f.write(f"    {key}: {type_to_print}\n")
-
-
 def generate_schema_from_df(df, save_path=None):
     df_copy = df.copy()
     dict_schema = {}

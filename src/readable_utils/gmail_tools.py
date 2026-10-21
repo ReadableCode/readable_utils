@@ -423,14 +423,6 @@ def get_attachment_from_search_string(  # noqa: C901
                                 + "."
                                 + original_file_extension
                             )
-                        elif output_file_name == "highjump":
-                            filename = (
-                                "highjump file"
-                                + " "
-                                + str_internal_dt_received_with_seconds
-                                + "."
-                                + original_file_extension
-                            )
                         attachment_id = part["parts"][0]["body"]["attachmentId"]
                         attachment = (
                             service.users()
