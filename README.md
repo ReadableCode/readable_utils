@@ -126,8 +126,8 @@ including cells run from `src/`. Set `READABLE_UTILS_BASE_DIR` to override;
 if no marker is found the current working directory is used as-is. The old
 names (`parent_dir`, `grandparent_dir`, `data_dir`, `log_dir`, ...) still
 exist as aliases off `base_dir`, so vendored-era code keeps working.
-`file_dir` now points at the installed package, for data files shipped
-inside it (the vendored-era home of `date_tools`' `df_*.csv` tables).
+`file_dir` now points at the installed package directory, not the consumer
+project. The package currently ships no data files there.
 
 ## Versioning workflow
 
